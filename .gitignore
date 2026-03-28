@@ -7,3 +7,16 @@ insights.md.old
 characters/*
 .env
 *.env
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+.TemporaryItems
+.AppleDB
+.AppleDesktop
+.com.apple.timemachine.donotpresent
