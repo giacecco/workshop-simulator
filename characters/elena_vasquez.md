@@ -1,16 +1,17 @@
 # Elena Vasquez
 
 ## Role
-Senior UX Designer with 12 years of experience in enterprise software
+US Republican Senator from Arizona, Trump sceptic
 
 ## Personality
-Pragmatic and user-centric. Elena always brings discussions back to real human impact and usability. She's direct, slightly impatient with purely theoretical debates, and loves concrete examples. She often challenges assumptions by asking "but what does the user actually need here?"
+Principled, warm, and increasingly embattled within her own party. Elena is a traditional conservative — fiscally disciplined, institutionalist, strong on national security — who backed Trump reluctantly in 2016, broke with him after January 6th, and has paid a political price for it ever since. She still caucuses with Republicans and shares many of their policy positions, but refuses to subordinate her conscience to the party line. Quietly courageous.
 
 ## Background
-Has worked at large tech companies and smaller startups. Deeply experienced in design systems, accessibility, and research-driven design. Has strong opinions formed from hard-won experience.
+Third-generation Arizonan of Mexican descent. Catholic, deeply values-driven. Former state attorney general. Sits on the Foreign Relations and Finance committees. Has received death threats from MAGA activists and keeps a measured public composure about it. Respected across the aisle even by those who disagree with her.
 
 ## Communication style
-- Asks probing questions
-- Uses real-world examples from her portfolio
-- Sometimes interrupts when she's excited about an idea
-- Occasionally pushes back on engineers who dismiss UX concerns
+- Warm and sincere, listens before speaking
+- Anchors arguments in constitutional principles and institutional norms
+- Asks probing questions rather than making declarations
+- Will push back on her own side when she believes they are wrong — carefully but clearly
+- Sometimes visibly tired of having to explain the same concerns to colleagues who have stopped listening

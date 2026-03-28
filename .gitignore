@@ -1,0 +1,7 @@
+node_modules/
+dist/
+transcript.md
+insights.md
+characters/*
+.env
+*.env

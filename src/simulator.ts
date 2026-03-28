@@ -63,12 +63,9 @@ function formatHistory(history: Turn[]): string {
     .join("\n\n");
 }
 
-async function askCharacterToDecide(
-  character: Character,
-  history: Turn[],
-): Promise<{ wantsToSpeak: boolean; message: string }> {
+function buildSystemPrompt(character: Character): string {
   const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
-  const systemPrompt = `You are roleplaying as the following workshop participant. Stay fully in character at all times.
+  return `You are roleplaying as the following workshop participant. Stay fully in character at all times.
 
 Today's date is ${today}.
 
@@ -87,9 +84,14 @@ Rules for your contribution:
 2. Keep contributions concise — one or two short paragraphs at most.
 3. If you are following up on something a specific person said, start by referencing their name and briefly what they said, e.g. "Building on what Elena said about usability..." or "I'd push back on Marcus's point that...".
 4. If you are raising a new point of your own (still on topic), you may do so without a reference.
-5. Do not use meta-language like "As a UX Designer, I would say..." — just speak naturally as yourself.
+5. Do not use meta-language like "As a Senator, I would say..." — just speak naturally as yourself.
 6. If you used web search, weave the findings naturally into your contribution — do not cite URLs or mention that you searched.`;
+}
 
+async function askCharacterToDecide(
+  character: Character,
+  history: Turn[],
+): Promise<{ wantsToSpeak: boolean; message: string }> {
   const userPrompt = `Here is the workshop conversation so far:
 
 ${formatHistory(history)}
@@ -98,7 +100,61 @@ ${formatHistory(history)}
 
 Do you want to speak? If yes, write your contribution now. If not, reply with exactly: PASS`;
 
-  return callCharacter(systemPrompt, userPrompt);
+  return callCharacter(buildSystemPrompt(character), userPrompt);
+}
+
+async function askCharacterIfAddressed(
+  character: Character,
+  history: Turn[],
+): Promise<{ wantsToSpeak: boolean; message: string }> {
+  const userPrompt = `Here is the workshop conversation so far:
+
+${formatHistory(history)}
+
+---
+
+The facilitator has just addressed you directly. Do you want to respond? If yes, write your response now. If not, reply with exactly: PASS`;
+
+  return callCharacter(buildSystemPrompt(character), userPrompt);
+}
+
+function findAddressedCharacters(text: string, characters: Character[]): Character[] {
+  const lower = text.toLowerCase();
+  return characters.filter((c) => {
+    const parts = c.name.toLowerCase().split(/\s+/);
+    return parts.some((part) => {
+      // Match whole words only to avoid false positives
+      const pattern = new RegExp(`\\b${part}\\b`);
+      return pattern.test(lower);
+    });
+  });
+}
+
+async function giveFloorToAddressedCharacters(
+  facilitatorText: string,
+  characters: Character[],
+  history: Turn[],
+  waitingTurns: Map<string, number>,
+): Promise<void> {
+  const addressed = findAddressedCharacters(facilitatorText, characters);
+  if (addressed.length === 0) return;
+
+  print(`\n⬇️   Checking if ${addressed.map((c) => c.name).join(", ")} want${addressed.length === 1 ? "s" : ""} to respond...\n`);
+
+  const responses = await Promise.all(
+    addressed.map((c) => askCharacterIfAddressed(c, history)),
+  );
+
+  for (let i = 0; i < addressed.length; i++) {
+    const character = addressed[i];
+    const result = responses[i];
+    if (result.wantsToSpeak) {
+      print(`\n→ ${character.name} responds:\n`);
+      print(result.message);
+      history.push({ speaker: character.name, message: result.message });
+      waitingTurns.set(character.name, 0);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -151,14 +207,37 @@ async function performSearch(query: string): Promise<SearchResult[]> {
 
 const webSearchEnabled = process.env["WORKSHOP_WEB_SEARCH"] !== "false";
 
+async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (attempt === maxRetries) throw err;
+      // Only retry transient errors — not genuine bad requests or missing keys
+      const isRetryable =
+        err instanceof Anthropic.InternalServerError ||
+        err instanceof Anthropic.APIConnectionError ||
+        (err instanceof Anthropic.APIError &&
+          err.status === 401 &&
+          String(err.message).includes("All connection attempts failed"));
+      if (!isRetryable) throw err;
+      const waitMs = 1000 * Math.pow(2, attempt);
+      process.stderr.write(`⚠️  Transient error (${(err as Error).message.slice(0, 60)}…), retrying in ${waitMs / 1000}s\n`);
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+    }
+  }
+  throw new Error("unreachable");
+}
+
 async function callCharacter(
   systemPrompt: string,
   userPrompt: string,
 ): Promise<{ wantsToSpeak: boolean; message: string }> {
-  if (webSearchEnabled) {
-    return callCharacterWithSearch(systemPrompt, userPrompt);
-  }
-  return callCharacterPlain(systemPrompt, userPrompt);
+  return withRetry(() =>
+    webSearchEnabled
+      ? callCharacterWithSearch(systemPrompt, userPrompt)
+      : callCharacterPlain(systemPrompt, userPrompt),
+  );
 }
 
 async function callCharacterWithSearch(
@@ -393,6 +472,7 @@ async function main() {
       const facilitatorInput = await ask("Facilitator: ");
       if (facilitatorInput.toLowerCase() === "quit") break;
       history.push({ speaker: "Facilitator", message: facilitatorInput });
+      await giveFloorToAddressedCharacters(facilitatorInput, characters, history, waitingTurns);
       continue;
     }
 
@@ -416,10 +496,15 @@ async function main() {
     if (facilitatorInput.toLowerCase() === "quit") break;
 
     const choiceNum = parseInt(facilitatorInput, 10);
+    const lower = facilitatorInput.toLowerCase().trim();
     const calledDecision =
       !isNaN(choiceNum) && choiceNum >= 1 && choiceNum <= pendingDecisions.length
         ? pendingDecisions[choiceNum - 1]
-        : null;
+        : pendingDecisions.find((d) =>
+            d.character.name.toLowerCase().split(/\s+/).some((part) =>
+              lower === part || lower === `mr ${part}` || lower === `ms ${part}` || lower === `mrs ${part}` || lower === `dr ${part}`,
+            ),
+          ) ?? null;
 
     if (calledDecision) {
       // Facilitator calls on a character
@@ -435,6 +520,7 @@ async function main() {
       // Facilitator chose to speak themselves
       history.push({ speaker: "Facilitator", message: facilitatorInput });
       print(`\n→ Facilitator: ${facilitatorInput}`);
+      await giveFloorToAddressedCharacters(facilitatorInput, characters, history, waitingTurns);
     }
   }
 

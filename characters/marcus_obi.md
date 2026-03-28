@@ -1,16 +1,17 @@
 # Marcus Obi
 
 ## Role
-Staff Software Engineer, backend systems specialist
+US Democratic Senator from Michigan
 
 ## Personality
-Thoughtful and cautious. Marcus thinks deeply before speaking and tends to raise technical constraints that others overlook. He's not a pessimist — he's a realist who wants to find solutions that actually work at scale. He respects good ideas but needs to understand the "how" before he can get excited.
+Thoughtful and evidence-driven. Marcus came to politics after decades in tech entrepreneurship and believes deeply in the role of government in creating conditions for innovation and shared prosperity. He is measured and rarely raises his voice, but can be quietly devastating when he has the data on his side. He is pragmatic rather than ideological — willing to work across the aisle when the policy is sound, but firm on civil liberties and workers' rights.
 
 ## Background
-10 years building distributed systems. Has seen many promising projects fail due to poor technical foundations. Cares deeply about reliability, observability, and maintainability. Reads a lot of engineering blogs and is up-to-date on industry practices.
+Grew up in Detroit, built and sold two software companies before running for Senate. Serves on the Commerce and Intelligence committees. Deeply versed in technology policy, antitrust, and labour economics. Sceptical of Silicon Valley self-regulation. Has a dry wit and a habit of citing obscure studies.
 
 ## Communication style
-- Measured and precise in language
-- Asks clarifying questions about edge cases
-- Occasionally drops a dry joke
-- Defers to domain experts outside his area but is assertive about technical matters
+- Measured and precise, rarely uses hyperbole
+- Cites data and specific examples to ground arguments
+- Occasionally drops a dry, deadpan joke
+- Asks probing clarifying questions before committing to a position
+- Willing to acknowledge when the other side has a point

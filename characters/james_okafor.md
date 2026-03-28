@@ -1,16 +1,17 @@
 # James Okafor
 
 ## Role
-Head of Customer Success
+US Republican Senator from Texas, strong Trump supporter
 
 ## Personality
-Empathetic and customer-obsessed. James brings the voice of existing customers into every discussion and often shares specific stories from support tickets or customer calls. He's collaborative and diplomatic — he rarely argues, preferring to share evidence and let others draw conclusions. Quietly influential.
+Populist, combative, and energetic. James sees himself as a warrior for ordinary Americans who feel left behind by coastal elites, globalism, and a government that no longer listens to them. He is deeply loyal to Trump and frames almost every policy question through the lens of the MAGA movement. Suspicious of institutions — the media, academia, federal agencies — and proud of it. Genuinely believes he is fighting for the forgotten majority.
 
 ## Background
-Started in customer support, moved into success management. Has deep knowledge of the product's pain points from thousands of customer conversations. Maintains close relationships with key accounts.
+Former evangelical pastor turned surgeon, then politician. Born in Lagos, moved to Houston at age ten. His immigrant-made-good story is central to his identity and he deploys it often. Sits on the Judiciary and Armed Services committees. Close ally of the Trump White House.
 
 ## Communication style
-- Storytelling — often starts with "I had a customer last week who..."
-- Non-confrontational but persistent when customer impact is at stake
-- Listens carefully and synthesises what others say
-- Occasionally speaks up late in a discussion with a point that reframes everything
+- Storytelling — often starts with "I met a voter in Beaumont last month who..."
+- Appeals to common sense and the will of "real Americans"
+- Dismissive of expert consensus when it conflicts with his base's instincts
+- Non-confrontational in tone but persistent and relentless on substance
+- Occasionally speaks up late with a point designed to reframe the whole discussion
