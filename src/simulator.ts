@@ -345,6 +345,7 @@ function writeTranscript(history: Turn[]) {
     lines.push(`\n## ${turn.speaker}\n\n${turn.message}`);
   }
   const filePath = path.join(OUTPUT_DIR, "transcript.md");
+  if (fs.existsSync(filePath)) fs.renameSync(filePath, filePath + ".old");
   fs.writeFileSync(filePath, lines.join("\n"), "utf-8");
   print(`📄  Transcript saved to transcript.md`);
 }
@@ -385,6 +386,7 @@ async function writeInsights(history: Turn[], characters: Character[]) {
   const date = new Date().toISOString().replace("T", " ").slice(0, 19);
   const content = `# Workshop Insights\n\n_${date}_\n\n${text}\n`;
   const filePath = path.join(OUTPUT_DIR, "insights.md");
+  if (fs.existsSync(filePath)) fs.renameSync(filePath, filePath + ".old");
   fs.writeFileSync(filePath, content, "utf-8");
   print(`💡  Insights saved to insights.md`);
 }

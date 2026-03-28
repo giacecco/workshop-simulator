@@ -1,7 +1,9 @@
 node_modules/
 dist/
 transcript.md
+transcript.md.old
 insights.md
+insights.md.old
 characters/*
 .env
 *.env
