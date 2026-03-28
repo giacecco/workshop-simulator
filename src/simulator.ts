@@ -10,6 +10,7 @@ import { fileURLToPath } from "url";
 
 interface Character {
   name: string;
+  role: string;
   description: string; // full markdown content
 }
 
@@ -23,6 +24,7 @@ interface SpeakDecision {
   wantsToSpeak: boolean;
   message: string;
   turnsWaiting: number; // how many turns they've been signalling they want to speak
+  historyLengthAtDraft: number; // history length when message was drafted
 }
 
 // ---------------------------------------------------------------------------
@@ -47,7 +49,9 @@ function loadCharacters(): Character[] {
     // Use the first H1 heading as the name, falling back to the filename
     const headingMatch = content.match(/^#\s+(.+)$/m);
     const name = headingMatch ? headingMatch[1].trim() : file.replace(".md", "");
-    return { name, description: content };
+    const roleMatch = content.match(/^##\s+Role\s*\n+(.+)$/m);
+    const role = roleMatch ? roleMatch[1].trim() : "";
+    return { name, role, description: content };
   });
 }
 
@@ -106,16 +110,17 @@ Do you want to speak? If yes, write your contribution now. If not, reply with ex
 async function askCharacterIfAddressed(
   character: Character,
   history: Turn[],
-): Promise<{ wantsToSpeak: boolean; message: string }> {
+): Promise<string> {
   const userPrompt = `Here is the workshop conversation so far:
 
 ${formatHistory(history)}
 
 ---
 
-The facilitator has just addressed you directly. Do you want to respond? If yes, write your response now. If not, reply with exactly: PASS`;
+The facilitator has just addressed you directly. Respond now — either with your contribution, or with a brief, natural, in-character decline if you have nothing to add at this point. Either way, always reply with something.`;
 
-  return callCharacter(buildSystemPrompt(character), userPrompt);
+  const result = await callCharacter(buildSystemPrompt(character), userPrompt);
+  return result.message;
 }
 
 function findAddressedCharacters(text: string, characters: Character[]): Character[] {
@@ -135,26 +140,63 @@ async function giveFloorToAddressedCharacters(
   characters: Character[],
   history: Turn[],
   waitingTurns: Map<string, number>,
-): Promise<void> {
+  pendingDecisions: SpeakDecision[],
+  justSpoke: Set<string>,
+): Promise<SpeakDecision[]> {
   const addressed = findAddressedCharacters(facilitatorText, characters);
-  if (addressed.length === 0) return;
+  if (addressed.length === 0) return pendingDecisions;
 
-  print(`\n⬇️   Checking if ${addressed.map((c) => c.name).join(", ")} want${addressed.length === 1 ? "s" : ""} to respond...\n`);
+  let updated = pendingDecisions;
 
-  const responses = await Promise.all(
-    addressed.map((c) => askCharacterIfAddressed(c, history)),
+  // Split addressed characters into those already queued (use saved message)
+  // and those who need to be asked.
+  const alreadyPending = addressed.filter((c) =>
+    updated.some((d) => d.character.name === c.name),
+  );
+  const needToAsk = addressed.filter((c) =>
+    !updated.some((d) => d.character.name === c.name),
   );
 
-  for (let i = 0; i < addressed.length; i++) {
-    const character = addressed[i];
-    const result = responses[i];
-    if (result.wantsToSpeak) {
-      print(`\n→ ${character.name} responds:\n`);
-      print(result.message);
-      history.push({ speaker: character.name, message: result.message });
-      waitingTurns.set(character.name, 0);
+  // Give the floor to characters already in the queue.
+  // If their draft is stale (someone spoke since), re-query them first.
+  for (const character of alreadyPending) {
+    const decision = updated.find((d) => d.character.name === character.name)!;
+    let message: string;
+    if (decision.historyLengthAtDraft === history.length) {
+      message = decision.message;
+    } else {
+      // Draft is stale — ask them to update before giving the floor.
+      message = await askCharacterIfAddressed(character, history);
+    }
+    print(`\n→ ${label(character)} speaks:\n`);
+    print(message);
+    history.push({ speaker: character.name, message });
+    waitingTurns.set(character.name, 0);
+    justSpoke.add(character.name);
+    updated = updated.filter((d) => d.character.name !== character.name);
+  }
+
+  // Ask characters not yet in the queue whether they want to respond.
+  if (needToAsk.length > 0) {
+    print(`\n⬇️   Checking if ${needToAsk.map((c) => label(c)).join(", ")} want${needToAsk.length === 1 ? "s" : ""} to respond...\n`);
+    const messages = await Promise.all(
+      needToAsk.map((c) => askCharacterIfAddressed(c, history)),
+    );
+    for (let i = 0; i < needToAsk.length; i++) {
+      const character = needToAsk[i];
+      const message = messages[i];
+      if (message) {
+        print(`\n→ ${label(character)} responds:\n`);
+        print(message);
+        history.push({ speaker: character.name, message });
+        waitingTurns.set(character.name, 0);
+        justSpoke.add(character.name);
+        updated = updated.filter((d) => d.character.name !== character.name);
+      }
     }
   }
+
+  return updated;
 }
 
 // ---------------------------------------------------------------------------
@@ -408,6 +450,10 @@ function print(text: string) {
   console.log(text);
 }
 
+function label(c: Character): string {
+  return c.role ? `${c.name} (${c.role})` : c.name;
+}
+
 function divider() {
   print("\n" + "─".repeat(70) + "\n");
 }
@@ -427,6 +473,8 @@ async function main() {
   );
   // The current "raised hands" — characters who want to speak this round.
   let pendingDecisions: SpeakDecision[] = [];
+  // Characters who spoke in the previous round — skipped for one turn.
+  const justSpoke: Set<string> = new Set();
 
   if (webSearchEnabled) await checkDuckDuckGoAvailable();
 
@@ -434,7 +482,7 @@ async function main() {
   print("=".repeat(70));
   print("You are the facilitator. Characters will decide when to speak.");
   print("Type 'quit' at any prompt to end the workshop.\n");
-  print(`Participants: ${characters.map((c) => c.name).join(", ")}`);
+  print(`Participants: ${characters.map((c) => label(c)).join(", ")}`);
   divider();
 
   // --- Facilitator opens the workshop ---
@@ -448,25 +496,50 @@ async function main() {
   // Main loop
   while (true) {
     divider();
-    print("⏳  Checking who wants to speak...\n");
 
-    // Ask all characters whether they want to speak this round.
-    const decisions = await Promise.all(
-      characters.map(async (character) => {
-        const result = await askCharacterToDecide(character, history);
-        const turnsWaiting = waitingTurns.get(character.name) ?? 0;
-        const updated: SpeakDecision = {
-          character,
-          wantsToSpeak: result.wantsToSpeak,
-          message: result.message,
-          turnsWaiting: result.wantsToSpeak ? turnsWaiting + 1 : 0,
-        };
-        waitingTurns.set(character.name, updated.wantsToSpeak ? turnsWaiting + 1 : 0);
-        return updated;
-      }),
-    );
+    // Split pending: fresh (draft still matches history) vs stale (someone spoke since).
+    const freshPending = pendingDecisions.filter((d) => d.historyLengthAtDraft === history.length);
+    const stalePending = pendingDecisions.filter((d) => d.historyLengthAtDraft !== history.length);
+    pendingDecisions = freshPending;
 
-    pendingDecisions = decisions.filter((d) => d.wantsToSpeak);
+    const freshNames = new Set(freshPending.map((d) => d.character.name));
+    // Re-query stale characters plus those not in the queue at all.
+    // Exclude those who just spoke (one-turn cooldown).
+    const toQuery = characters.filter((c) => !freshNames.has(c.name) && !justSpoke.has(c.name));
+    justSpoke.clear();
+
+    // Increment turnsWaiting for carried-over fresh characters.
+    for (const d of freshPending) {
+      d.turnsWaiting += 1;
+      waitingTurns.set(d.character.name, d.turnsWaiting);
+    }
+
+    if (toQuery.length > 0) {
+      if (stalePending.length > 0) {
+        print(`⏳  Checking who wants to speak (including ${stalePending.map((d) => label(d.character)).join(", ")}, who may want to update their contribution)...\n`);
+      } else {
+        print("⏳  Checking who wants to speak...\n");
+      }
+      const newDecisions = await Promise.all(
+        toQuery.map(async (character) => {
+          const result = await askCharacterToDecide(character, history);
+          const prevTurnsWaiting = stalePending.find((d) => d.character.name === character.name)?.turnsWaiting ?? 0;
+          const turnsWaiting = result.wantsToSpeak ? prevTurnsWaiting + 1 : 0;
+          waitingTurns.set(character.name, turnsWaiting);
+          return {
+            character,
+            wantsToSpeak: result.wantsToSpeak,
+            message: result.message,
+            turnsWaiting,
+            historyLengthAtDraft: history.length,
+          } satisfies SpeakDecision;
+        }),
+      );
+      pendingDecisions = [
+        ...pendingDecisions,
+        ...newDecisions.filter((d) => d.wantsToSpeak),
+      ];
+    }
 
     if (pendingDecisions.length === 0) {
       // Nobody wants to speak — facilitator must say something
@@ -474,7 +547,7 @@ async function main() {
       const facilitatorInput = await ask("Facilitator: ");
       if (facilitatorInput.toLowerCase() === "quit") break;
       history.push({ speaker: "Facilitator", message: facilitatorInput });
-      await giveFloorToAddressedCharacters(facilitatorInput, characters, history, waitingTurns);
+      pendingDecisions = await giveFloorToAddressedCharacters(facilitatorInput, characters, history, waitingTurns, pendingDecisions, justSpoke);
       continue;
     }
 
@@ -485,7 +558,7 @@ async function main() {
         d.turnsWaiting > 1
           ? ` (waiting ${d.turnsWaiting} turn${d.turnsWaiting > 1 ? "s" : ""})`
           : "";
-      print(`  ${i + 1}. ${d.character.name}${waitLabel}`);
+      print(`  ${i + 1}. ${label(d.character)}${waitLabel}`);
     });
 
     print("\nOptions:");
@@ -510,19 +583,21 @@ async function main() {
 
     if (calledDecision) {
       // Facilitator calls on a character
-      print(`\n→ ${calledDecision.character.name} speaks:\n`);
+      print(`\n→ ${label(calledDecision.character)} speaks:\n`);
       print(calledDecision.message);
       history.push({
         speaker: calledDecision.character.name,
         message: calledDecision.message,
       });
-      // Reset that character's waiting counter
+      // Remove from pending, mark as just spoke, reset waiting counter
       waitingTurns.set(calledDecision.character.name, 0);
+      justSpoke.add(calledDecision.character.name);
+      pendingDecisions = pendingDecisions.filter((d) => d.character.name !== calledDecision.character.name);
     } else {
       // Facilitator chose to speak themselves
       history.push({ speaker: "Facilitator", message: facilitatorInput });
       print(`\n→ Facilitator: ${facilitatorInput}`);
-      await giveFloorToAddressedCharacters(facilitatorInput, characters, history, waitingTurns);
+      pendingDecisions = await giveFloorToAddressedCharacters(facilitatorInput, characters, history, waitingTurns, pendingDecisions, justSpoke);
     }
   }
 

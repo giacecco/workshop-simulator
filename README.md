@@ -11,7 +11,7 @@ Each character is defined by a Markdown file in the `characters/` folder. At eve
 1. **Facilitator opens** with a statement to set the topic.
 2. **Characters decide** — every character is queried in parallel. Each either drafts a contribution or passes.
 3. **Facilitator chooses** — if anyone wants to speak, the facilitator is shown the list and picks who goes next. If nobody wants to speak, the facilitator must say something to keep the discussion going.
-4. **Direct addressing** — if the facilitator mentions a character by name, that character is immediately given a chance to respond before the next general round.
+4. **Direct addressing** — if the facilitator mentions a character by name, that character always replies immediately. If they were already in the waiting queue with a fresh draft (no one has spoken since they queued), their saved contribution is used directly with no extra API call. If their draft is stale, or they were not in the queue, they are queried on the spot and either contribute or decline briefly in character. Either way the response is recorded and the normal round then follows.
 5. **Repeat** until the facilitator types `quit`.
 
 On exit the simulator writes two files:
@@ -29,6 +29,8 @@ Characters know today's date and can search the web (via DuckDuckGo) to back up 
 ### Waiting queue
 
 Characters who want to speak but are not called on remain queued. The facilitator is shown how many turns each character has been waiting, but is free to call on them in any order.
+
+Characters already in the queue are not re-queried each round — their contribution is held until they are called on. However, if another participant speaks in the meantime, their draft is considered stale and they are re-queried so they can respond to what was just said. A character who has just spoken is not queried again in the immediately following round.
 
 ## Setup
 
