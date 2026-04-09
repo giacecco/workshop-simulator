@@ -1,4 +1,5 @@
 node_modules/
+.workshop_history
 dist/
 transcript.md
 transcript.md.old

@@ -34,14 +34,14 @@ Characters already in the queue are not re-queried each round — their contribu
 
 ## Setup
 
-**Requirements:** Node.js 18+, an Anthropic API key.
+**Requirements:** [Bun](https://bun.sh), an Anthropic API key.
 
 ```bash
 git clone <repo>
 cd workshop-simulator
-npm install
+bun install
 export ANTHROPIC_API_KEY=your_key_here
-npm start
+bun start
 ```
 
 ## Defining characters
@@ -73,7 +73,24 @@ The three example characters are US senators representing a Democrat, a Trump-su
 | A statement | Speak as facilitator; any named characters get an immediate chance to respond |
 | A number | Call on the nth character in the waiting list |
 | A name (`Elena`, `Okafor`, `Mr Obi`, `Ms Vasquez`, `Dr ...`) | Call on that character by name |
+| `/Name instruction` | Send a secret order to a character (e.g. `/James get angry with Elena`). Not logged to the transcript. The character is queried immediately and jumps to the top of the queue. |
 | `quit` | End the workshop and generate output files |
+
+### Facilitator history
+
+All facilitator inputs are saved to `.workshop_history` in the project root and persist across runs. Use the up/down arrow keys to navigate previous inputs, just like a shell.
+
+## CLI options
+
+| Option | Description |
+|---|---|
+| `--opening "text"` | Set the opening statement from the command line, skipping the prompt |
+
+Example:
+
+```bash
+bun start --opening "Today we're discussing AI regulation in the EU."
+```
 
 ## Environment variables
 
@@ -91,4 +108,4 @@ Both files are written to the project root when you quit.
 
 ## Licence
 
-MIT — see `LICENSE`.
+Capgemini — all rights reserved.

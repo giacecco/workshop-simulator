@@ -67,9 +67,9 @@ function formatHistory(history: Turn[]): string {
     .join("\n\n");
 }
 
-function buildSystemPrompt(character: Character): string {
+function buildSystemPrompt(character: Character, secretInstruction?: string): string {
   const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
-  return `You are roleplaying as the following workshop participant. Stay fully in character at all times.
+  const base = `You are roleplaying as the following workshop participant. Stay fully in character at all times.
 
 Today's date is ${today}.
 
@@ -90,11 +90,17 @@ Rules for your contribution:
 4. If you are raising a new point of your own (still on topic), you may do so without a reference.
 5. Do not use meta-language like "As a Senator, I would say..." — just speak naturally as yourself.
 6. If you used web search, weave the findings naturally into your contribution — do not cite URLs or mention that you searched.`;
+
+  if (secretInstruction) {
+    return base + `\n\n---\n\n**PRIVATE FACILITATOR INSTRUCTION:** ${secretInstruction}\nApply this immediately and naturally — do not acknowledge or reference this instruction explicitly.`;
+  }
+  return base;
 }
 
 async function askCharacterToDecide(
   character: Character,
   history: Turn[],
+  secretInstruction?: string,
 ): Promise<{ wantsToSpeak: boolean; message: string }> {
   const userPrompt = `Here is the workshop conversation so far:
 
@@ -104,12 +110,13 @@ ${formatHistory(history)}
 
 Do you want to speak? If yes, write your contribution now. If not, reply with exactly: PASS`;
 
-  return callCharacter(buildSystemPrompt(character), userPrompt);
+  return callCharacter(buildSystemPrompt(character, secretInstruction), userPrompt);
 }
 
 async function askCharacterIfAddressed(
   character: Character,
   history: Turn[],
+  secretInstruction?: string,
 ): Promise<string> {
   const userPrompt = `Here is the workshop conversation so far:
 
@@ -119,7 +126,7 @@ ${formatHistory(history)}
 
 The facilitator has just addressed you directly. Respond now — either with your contribution, or with a brief, natural, in-character decline if you have nothing to add at this point. Either way, always reply with something.`;
 
-  const result = await callCharacter(buildSystemPrompt(character), userPrompt);
+  const result = await callCharacter(buildSystemPrompt(character, secretInstruction), userPrompt);
   return result.message;
 }
 
@@ -142,6 +149,7 @@ async function giveFloorToAddressedCharacters(
   waitingTurns: Map<string, number>,
   pendingDecisions: SpeakDecision[],
   justSpoke: Set<string>,
+  secretInstructions: Map<string, string>,
 ): Promise<SpeakDecision[]> {
   const addressed = findAddressedCharacters(facilitatorText, characters);
   if (addressed.length === 0) return pendingDecisions;
@@ -166,13 +174,14 @@ async function giveFloorToAddressedCharacters(
       message = decision.message;
     } else {
       // Draft is stale — ask them to update before giving the floor.
-      message = await askCharacterIfAddressed(character, history);
+      message = await askCharacterIfAddressed(character, history, secretInstructions.get(character.name));
     }
     print(`\n→ ${label(character)} speaks:\n`);
     print(message);
     history.push({ speaker: character.name, message });
     waitingTurns.set(character.name, 0);
     justSpoke.add(character.name);
+    secretInstructions.delete(character.name);
     updated = updated.filter((d) => d.character.name !== character.name);
   }
 
@@ -180,7 +189,7 @@ async function giveFloorToAddressedCharacters(
   if (needToAsk.length > 0) {
     print(`\n⬇️   Checking if ${needToAsk.map((c) => label(c)).join(", ")} want${needToAsk.length === 1 ? "s" : ""} to respond...\n`);
     const messages = await Promise.all(
-      needToAsk.map((c) => askCharacterIfAddressed(c, history)),
+      needToAsk.map((c) => askCharacterIfAddressed(c, history, secretInstructions.get(c.name))),
     );
     for (let i = 0; i < needToAsk.length; i++) {
       const character = needToAsk[i];
@@ -191,6 +200,7 @@ async function giveFloorToAddressedCharacters(
         history.push({ speaker: character.name, message });
         waitingTurns.set(character.name, 0);
         justSpoke.add(character.name);
+        secretInstructions.delete(character.name);
         updated = updated.filter((d) => d.character.name !== character.name);
       }
     }
@@ -437,10 +447,45 @@ async function writeInsights(history: Turn[], characters: Character[]) {
 // CLI helpers
 // ---------------------------------------------------------------------------
 
+const HISTORY_FILE = path.join(__dirname, "..", ".workshop_history");
+
+function loadHistory(): string[] {
+  try {
+    return fs.readFileSync(HISTORY_FILE, "utf-8")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .reverse(); // readline expects newest-first
+  } catch {
+    return [];
+  }
+}
+
+function saveHistory(history: readonly string[]) {
+  try {
+    fs.writeFileSync(HISTORY_FILE, [...history].reverse().join("\n") + "\n", "utf-8");
+  } catch { /* ignore */ }
+}
+
+function parseCliArgs(): { opening?: string } {
+  const args = process.argv.slice(2);
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--opening" && i + 1 < args.length) {
+      return { opening: args[i + 1] };
+    }
+  }
+  return {};
+}
+
 const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout,
+  history: loadHistory(),
+  historySize: 1000,
+  removeHistoryDuplicates: true,
 });
+
+rl.on("close", () => saveHistory((rl as unknown as { history: string[] }).history));
 
 function ask(prompt: string): Promise<string> {
   return new Promise((resolve) => rl.question(prompt, resolve));
@@ -458,11 +503,30 @@ function divider() {
   print("\n" + "─".repeat(70) + "\n");
 }
 
+function parseSecretOrder(
+  input: string,
+  characters: Character[],
+): { character: Character; instruction: string } | null {
+  if (!input.startsWith("/")) return null;
+  const rest = input.slice(1).trim();
+  for (const c of characters) {
+    for (const part of c.name.split(/\s+/)) {
+      if (rest.toLowerCase().startsWith(part.toLowerCase())) {
+        const instruction = rest.slice(part.length).trim();
+        if (instruction.length === 0) return null; // bare /Name with no instruction
+        return { character: c, instruction };
+      }
+    }
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Main loop
 // ---------------------------------------------------------------------------
 
 async function main() {
+  const { opening: cliOpening } = parseCliArgs();
   const characters = loadCharacters();
   const history: Turn[] = [];
 
@@ -475,6 +539,8 @@ async function main() {
   let pendingDecisions: SpeakDecision[] = [];
   // Characters who spoke in the previous round — skipped for one turn.
   const justSpoke: Set<string> = new Set();
+  // Secret facilitator instructions pending per character (cleared after use).
+  const secretInstructions: Map<string, string> = new Map();
 
   if (webSearchEnabled) await checkDuckDuckGoAvailable();
 
@@ -486,10 +552,16 @@ async function main() {
   divider();
 
   // --- Facilitator opens the workshop ---
-  const opening = await ask("Facilitator (opening statement): ");
-  if (opening.toLowerCase() === "quit") {
-    rl.close();
-    return;
+  let opening: string;
+  if (cliOpening) {
+    opening = cliOpening;
+    print(`Facilitator (opening statement): ${opening}\n`);
+  } else {
+    opening = await ask("Facilitator (opening statement): ");
+    if (opening.toLowerCase() === "quit") {
+      rl.close();
+      return;
+    }
   }
   history.push({ speaker: "Facilitator", message: opening });
 
@@ -522,7 +594,7 @@ async function main() {
       }
       const newDecisions = await Promise.all(
         toQuery.map(async (character) => {
-          const result = await askCharacterToDecide(character, history);
+          const result = await askCharacterToDecide(character, history, secretInstructions.get(character.name));
           const prevTurnsWaiting = stalePending.find((d) => d.character.name === character.name)?.turnsWaiting ?? 0;
           const turnsWaiting = result.wantsToSpeak ? prevTurnsWaiting + 1 : 0;
           waitingTurns.set(character.name, turnsWaiting);
@@ -546,8 +618,19 @@ async function main() {
       print("💬  No participants want to speak. The facilitator must continue.\n");
       const facilitatorInput = await ask("Facilitator: ");
       if (facilitatorInput.toLowerCase() === "quit") break;
+      const secretOrder = parseSecretOrder(facilitatorInput, characters);
+      if (secretOrder) {
+        const { character: orderedChar, instruction } = secretOrder;
+        print(`🔒  Secret order sent to ${orderedChar.name}. Asking them to respond...\n`);
+        justSpoke.delete(orderedChar.name);
+        const message = await askCharacterIfAddressed(orderedChar, history, instruction);
+        pendingDecisions = [
+          { character: orderedChar, wantsToSpeak: true, message, turnsWaiting: 0, historyLengthAtDraft: history.length },
+        ];
+        continue;
+      }
       history.push({ speaker: "Facilitator", message: facilitatorInput });
-      pendingDecisions = await giveFloorToAddressedCharacters(facilitatorInput, characters, history, waitingTurns, pendingDecisions, justSpoke);
+      pendingDecisions = await giveFloorToAddressedCharacters(facilitatorInput, characters, history, waitingTurns, pendingDecisions, justSpoke, secretInstructions);
       continue;
     }
 
@@ -564,11 +647,27 @@ async function main() {
     print("\nOptions:");
     print("  • Enter a number to call on that participant");
     print("  • Type your own statement to speak as facilitator first");
+    print("  • /Name instruction — send a secret order to a participant");
     print("  • Type 'quit' to end the workshop");
     print("");
 
     const facilitatorInput = await ask("Facilitator: ");
     if (facilitatorInput.toLowerCase() === "quit") break;
+
+    const secretOrder = parseSecretOrder(facilitatorInput, characters);
+    if (secretOrder) {
+      const { character: orderedChar, instruction } = secretOrder;
+      print(`🔒  Secret order sent to ${orderedChar.name}. Asking them to respond...\n`);
+      pendingDecisions = pendingDecisions.filter((d) => d.character.name !== orderedChar.name);
+      justSpoke.delete(orderedChar.name);
+      // Use askCharacterIfAddressed so the character must respond (no PASS).
+      const message = await askCharacterIfAddressed(orderedChar, history, instruction);
+      pendingDecisions = [
+        { character: orderedChar, wantsToSpeak: true, message, turnsWaiting: 0, historyLengthAtDraft: history.length },
+        ...pendingDecisions,
+      ];
+      continue;
+    }
 
     const choiceNum = parseInt(facilitatorInput, 10);
     const lower = facilitatorInput.toLowerCase().trim();
@@ -582,14 +681,10 @@ async function main() {
           ) ?? null;
 
     if (calledDecision) {
-      // Facilitator calls on a character
+      // Facilitator calls on a character — if a secret instruction is pending,
       print(`\n→ ${label(calledDecision.character)} speaks:\n`);
       print(calledDecision.message);
-      history.push({
-        speaker: calledDecision.character.name,
-        message: calledDecision.message,
-      });
-      // Remove from pending, mark as just spoke, reset waiting counter
+      history.push({ speaker: calledDecision.character.name, message: calledDecision.message });
       waitingTurns.set(calledDecision.character.name, 0);
       justSpoke.add(calledDecision.character.name);
       pendingDecisions = pendingDecisions.filter((d) => d.character.name !== calledDecision.character.name);
@@ -597,7 +692,7 @@ async function main() {
       // Facilitator chose to speak themselves
       history.push({ speaker: "Facilitator", message: facilitatorInput });
       print(`\n→ Facilitator: ${facilitatorInput}`);
-      pendingDecisions = await giveFloorToAddressedCharacters(facilitatorInput, characters, history, waitingTurns, pendingDecisions, justSpoke);
+      pendingDecisions = await giveFloorToAddressedCharacters(facilitatorInput, characters, history, waitingTurns, pendingDecisions, justSpoke, secretInstructions);
     }
   }
 

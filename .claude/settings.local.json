@@ -3,7 +3,8 @@
     "allow": [
       "Skill(claude-api)",
       "Bash(npm install:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(bun install:*)"
     ]
   }
 }
