@@ -15,5 +15,7 @@
 
 - Characters are queried in parallel via `Promise.all` each round.
 - Pending decisions track `historyLengthAtDraft` to detect stale drafts.
-- Secret orders use `askCharacterIfAddressed` (forced response, no PASS) so the character always joins the queue.
-- Facilitator command history is persisted to `.workshop_history` (gitignored) across runs.
+- The PASS instruction lives only in the `askCharacterToDecide` user prompt, not in the system prompt. This ensures characters always produce a real response when directly addressed or given a secret order.
+- Secret orders use `askCharacterIfAddressed` (forced response, no PASS option) so the character always joins the queue. If the model still returns an empty message (e.g. content policy refusal), a warning is shown and the character is not added to the queue.
+- Secret orders respect the model's content policy — instructions that ask for defamatory or harmful content will be silently ignored by the character.
+- Facilitator command history is persisted to `.workshop_history` (gitignored) across runs. Pure-number entries (used to call on participants) are excluded, and only the 50 most recent entries are kept.

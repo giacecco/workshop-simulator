@@ -77,9 +77,7 @@ ${character.description}
 
 ---
 
-You are attending a facilitated workshop. When asked whether you want to contribute, you must decide:
-- If you have something genuinely relevant to say (a follow-up, a question, a perspective, or a new point on the topic), respond with your contribution.
-- If you have nothing to add right now, respond with exactly: PASS
+You are attending a facilitated workshop.
 
 You have access to web search. Use it when current facts, data, or recent developments would strengthen your point — but only if it genuinely adds value. Do not search just for the sake of it.
 
@@ -108,7 +106,7 @@ ${formatHistory(history)}
 
 ---
 
-Do you want to speak? If yes, write your contribution now. If not, reply with exactly: PASS`;
+Do you want to speak? If you have something genuinely relevant to say (a follow-up, a question, a perspective, or a new point on the topic), write your contribution now. If you have nothing to add right now, reply with exactly: PASS`;
 
   return callCharacter(buildSystemPrompt(character, secretInstruction), userPrompt);
 }
@@ -463,7 +461,10 @@ function loadHistory(): string[] {
 
 function saveHistory(history: readonly string[]) {
   try {
-    fs.writeFileSync(HISTORY_FILE, [...history].reverse().join("\n") + "\n", "utf-8");
+    const filtered = history
+      .filter((line) => !/^\d+$/.test(line.trim()))
+      .slice(0, 50);
+    fs.writeFileSync(HISTORY_FILE, [...filtered].reverse().join("\n") + "\n", "utf-8");
   } catch { /* ignore */ }
 }
 
@@ -624,9 +625,13 @@ async function main() {
         print(`🔒  Secret order sent to ${orderedChar.name}. Asking them to respond...\n`);
         justSpoke.delete(orderedChar.name);
         const message = await askCharacterIfAddressed(orderedChar, history, instruction);
-        pendingDecisions = [
-          { character: orderedChar, wantsToSpeak: true, message, turnsWaiting: 0, historyLengthAtDraft: history.length },
-        ];
+        if (message) {
+          pendingDecisions = [
+            { character: orderedChar, wantsToSpeak: true, message, turnsWaiting: 0, historyLengthAtDraft: history.length },
+          ];
+        } else {
+          print(`⚠️  ${orderedChar.name} did not respond to the order.\n`);
+        }
         continue;
       }
       history.push({ speaker: "Facilitator", message: facilitatorInput });
@@ -660,12 +665,15 @@ async function main() {
       print(`🔒  Secret order sent to ${orderedChar.name}. Asking them to respond...\n`);
       pendingDecisions = pendingDecisions.filter((d) => d.character.name !== orderedChar.name);
       justSpoke.delete(orderedChar.name);
-      // Use askCharacterIfAddressed so the character must respond (no PASS).
       const message = await askCharacterIfAddressed(orderedChar, history, instruction);
-      pendingDecisions = [
-        { character: orderedChar, wantsToSpeak: true, message, turnsWaiting: 0, historyLengthAtDraft: history.length },
-        ...pendingDecisions,
-      ];
+      if (message) {
+        pendingDecisions = [
+          { character: orderedChar, wantsToSpeak: true, message, turnsWaiting: 0, historyLengthAtDraft: history.length },
+          ...pendingDecisions,
+        ];
+      } else {
+        print(`⚠️  ${orderedChar.name} did not respond to the order.\n`);
+      }
       continue;
     }
 

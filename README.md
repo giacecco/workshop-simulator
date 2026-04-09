@@ -73,12 +73,12 @@ The three example characters are US senators representing a Democrat, a Trump-su
 | A statement | Speak as facilitator; any named characters get an immediate chance to respond |
 | A number | Call on the nth character in the waiting list |
 | A name (`Elena`, `Okafor`, `Mr Obi`, `Ms Vasquez`, `Dr ...`) | Call on that character by name |
-| `/Name instruction` | Send a secret order to a character (e.g. `/James get angry with Elena`). Not logged to the transcript. The character is queried immediately and jumps to the top of the queue. |
+| `/Name instruction` | Send a secret order to a character (e.g. `/James get angry with Elena`). Not logged to the transcript. The character is queried immediately and jumps to the top of the queue. Orders that violate the model's content policy are silently refused by the character. |
 | `quit` | End the workshop and generate output files |
 
 ### Facilitator history
 
-All facilitator inputs are saved to `.workshop_history` in the project root and persist across runs. Use the up/down arrow keys to navigate previous inputs, just like a shell.
+All facilitator inputs are saved to `.workshop_history` in the project root and persist across runs. Use the up/down arrow keys to navigate previous inputs, just like a shell. Pure-number inputs (used to call on participants by position) are not saved, and history is capped at 50 entries.
 
 ## CLI options
 
